@@ -14,6 +14,14 @@ import SwiftUI
 struct HomeView: View {
     @EnvironmentObject var clothingStore: ClothingStore
     @EnvironmentObject var appSettings: AppSettings
+    @StateObject private var subscriptionManager = SubscriptionManager()
+    @StateObject private var usageTracker: UsageTracker
+    @State private var showPaywall = false
+    
+    init() {
+        let subscriptionManager = SubscriptionManager()
+        self._usageTracker = StateObject(wrappedValue: UsageTracker(subscriptionManager: subscriptionManager))
+    }
     
     private var isEnglish: Bool {
         appSettings.language == .english
@@ -35,7 +43,39 @@ struct HomeView: View {
                 
                 VStack(spacing: 40) {
                     // Header
-                    VStack(spacing: 10) {
+                    VStack(spacing: 15) {
+                        HStack {
+                            Spacer()
+                            
+                            if !subscriptionManager.isPremium {
+                                Button(action: {
+                                    showPaywall = true
+                                }) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "crown.fill")
+                                            .font(.caption)
+                                        Text("Premium")
+                                            .font(.caption)
+                                            .fontWeight(.semibold)
+                                    }
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(
+                                        LinearGradient(
+                                            colors: [Color.pink, Color.purple],
+                                            startPoint: .leading,
+                                            endPoint: .trailing
+                                        )
+                                    )
+                                    .foregroundColor(.white)
+                                    .cornerRadius(15)
+                                }
+                            } else {
+                                PremiumStatusBadge()
+                            }
+                        }
+                        .padding(.horizontal, 30)
+                        
                         Image(systemName: "tshirt.fill")
                             .font(.system(size: 60))
                             .foregroundColor(Color(hex: "d291bc"))
@@ -49,6 +89,15 @@ struct HomeView: View {
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)
+                        
+                        // Usage counters for free users
+                        if !subscriptionManager.subscriptionStatus.isPremium {
+                            HStack(spacing: 20) {
+                                UsageCounterView(type: .clothing)
+                                UsageCounterView(type: .outfitGeneration)
+                            }
+                            .padding(.top, 10)
+                        }
                     }
                     .padding(.top, 50)
                     
@@ -66,6 +115,27 @@ struct HomeView: View {
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 30)
+                        
+                        // Premium upgrade prompt for free users
+                        if !subscriptionManager.subscriptionStatus.isPremium && clothingStore.getAllItems().count >= 2 {
+                            Button("Premium'a Geç ve Sınırsız Özellikler Kazan") {
+                                showPaywall = true
+                            }
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 12)
+                            .background(
+                                LinearGradient(
+                                    colors: [Color.pink, Color.purple],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .cornerRadius(20)
+                            .shadow(color: .black.opacity(0.2), radius: 5, x: 0, y: 2)
+                        }
                     }
                     
                     Spacer()
@@ -91,6 +161,9 @@ struct HomeView: View {
                 }
             }
             .navigationBarHidden(true)
+        }
+        .sheet(isPresented: $showPaywall) {
+            ClosAIPremiumView()
         }
     }
 }

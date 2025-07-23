@@ -11,10 +11,20 @@ struct GenerateOutfitView: View {
     @EnvironmentObject var clothingStore: ClothingStore
     @EnvironmentObject var appSettings: AppSettings
     
+    @StateObject private var subscriptionManager = SubscriptionManager()
+    @StateObject private var usageTracker: UsageTracker
+    @State private var showPaywall = false
+    @State private var showUsageLimitAlert = false
+    
     @State private var currentSuggestion: OutfitSuggestion?
     @State private var isGenerating = false
     @State private var styleInput = ""
     @State private var showFavoriteAlert = false
+    
+    init() {
+        let subscriptionManager = SubscriptionManager()
+        self._usageTracker = StateObject(wrappedValue: UsageTracker(subscriptionManager: subscriptionManager))
+    }
     
     private var isEnglish: Bool {
         appSettings.language == .english
@@ -38,6 +48,15 @@ struct GenerateOutfitView: View {
                     VStack(spacing: 30) {
                         // Header
                         VStack(spacing: 15) {
+                            HStack {
+                                Spacer()
+                                if subscriptionManager.subscriptionStatus.isPremium {
+                                    PremiumStatusBadge()
+                                } else {
+                                    UsageCounterView(type: .outfitGeneration)
+                                }
+                            }
+                            
                             Image(systemName: "sparkles")
                                 .font(.system(size: 60))
                                 .foregroundColor(Color(hex: "d291bc"))
@@ -201,10 +220,27 @@ struct GenerateOutfitView: View {
         } message: {
             Text(isEnglish ? "This outfit has been saved to your favorites." : "Bu kombin favorilerinize kaydedildi.")
         }
+        .alert("Günlük Limit Doldu", isPresented: $showUsageLimitAlert) {
+            Button("Premium'a Geç") {
+                showPaywall = true
+            }
+            Button("Tamam", role: .cancel) { }
+        } message: {
+            Text("Günlük kombin oluşturma limitiniz doldu. Premium'a geçerek sınırsız kombin oluşturun!")
+        }
+        .sheet(isPresented: $showPaywall) {
+            ClosAIPremiumView()
+        }
     }
     
     // MARK: - Functions
     private func generateOutfitWithStyle() {
+        // Check usage limits before generating
+        if !usageTracker.trackOutfitGeneration() {
+            showUsageLimitAlert = true
+            return
+        }
+        
         isGenerating = true
         
         print("👗 Kombin üretiliyor...")

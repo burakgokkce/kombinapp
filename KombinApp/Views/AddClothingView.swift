@@ -13,11 +13,21 @@ struct AddClothingView: View {
     @EnvironmentObject var appSettings: AppSettings
     @Environment(\.dismiss) private var dismiss
     
+    @StateObject private var subscriptionManager = SubscriptionManager()
+    @StateObject private var usageTracker: UsageTracker
+    @State private var showPaywall = false
+    @State private var showUsageLimitAlert = false
+    
     @State private var selectedType: ClothingType = .top
     @State private var itemName = ""
     @State private var selectedImage: PhotosPickerItem?
     @State private var imageData: Data?
     @State private var selectedColor: ClothingColor = .black
+    
+    init() {
+        let subscriptionManager = SubscriptionManager()
+        self._usageTracker = StateObject(wrappedValue: UsageTracker(subscriptionManager: subscriptionManager))
+    }
 
 
     
@@ -42,7 +52,7 @@ struct AddClothingView: View {
                 ScrollView {
                     VStack(spacing: 30) {
                         // Header
-                        VStack(spacing: 10) {
+                        VStack(spacing: 15) {
                             Image(systemName: "plus.circle.fill")
                                 .font(.system(size: 50))
                                 .foregroundColor(Color(hex: "d291bc"))
@@ -51,6 +61,47 @@ struct AddClothingView: View {
                                 .font(.title2)
                                 .fontWeight(.bold)
                                 .foregroundColor(Color(hex: "d291bc"))
+                            
+                            // Usage Counter
+                            if !subscriptionManager.subscriptionStatus.isPremium {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "tshirt.fill")
+                                        .font(.caption)
+                                        .foregroundColor(.blue)
+                                    
+                                    Text("\(clothingStore.clothingItems.count)/\(UsageLimits.freeClothingLimit) kıyafet")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.primary)
+                                    
+                                    if clothingStore.clothingItems.count >= UsageLimits.freeClothingLimit {
+                                        Button("Premium'a Geç") {
+                                            showPaywall = true
+                                        }
+                                        .font(.caption2)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(
+                                            LinearGradient(
+                                                colors: [Color.pink, Color.purple],
+                                                startPoint: .leading,
+                                                endPoint: .trailing
+                                            )
+                                        )
+                                        .cornerRadius(8)
+                                    }
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(Color(.systemGray6))
+                                )
+                            } else {
+                                PremiumStatusBadge()
+                            }
                         }
                         .padding(.top, 20)
                         
@@ -206,6 +257,7 @@ struct AddClothingView: View {
                     }
                     .foregroundColor(Color(hex: "d291bc"))
                     .fontWeight(.semibold)
+                    .disabled(!canSaveItem)
                 }
             }
         }
@@ -214,6 +266,24 @@ struct AddClothingView: View {
                 if let data = try? await newValue?.loadTransferable(type: Data.self) {
                     imageData = data
                 }
+            }
+        }
+        .sheet(isPresented: $showPaywall) {
+            PaywallView()
+        }
+        .alert("Kıyafet Limiti", isPresented: $showUsageLimitAlert) {
+            Button("Premium'a Geç") {
+                showPaywall = true
+            }
+            Button("Tamam", role: .cancel) { }
+        } message: {
+            Text("Ücretsiz kullanımda en fazla 3 kıyafet ekleyebilirsiniz. Premium'a geçerek sınırsız kıyafet ekleyin!")
+        }
+        .onAppear {
+            // Update usage tracker with current clothing count
+            let currentCount = clothingStore.clothingItems.count
+            for _ in 0..<currentCount {
+                _ = usageTracker.trackClothingAddition()
             }
         }
 
@@ -227,8 +297,22 @@ struct AddClothingView: View {
     
 
     
+    // MARK: - Computed Properties
+    private var canSaveItem: Bool {
+        return subscriptionManager.subscriptionStatus.isPremium || 
+               clothingStore.clothingItems.count < UsageLimits.freeClothingLimit
+    }
+    
     // MARK: - Save Item
     private func saveItem() {
+        // Check usage limits before saving
+        if !subscriptionManager.subscriptionStatus.isPremium {
+            if clothingStore.clothingItems.count >= UsageLimits.freeClothingLimit {
+                showUsageLimitAlert = true
+                return
+            }
+        }
+        
         let newItem = ClothingItem(
             type: selectedType,
             name: itemName.isEmpty ? selectedType.rawValue : itemName,
@@ -237,7 +321,14 @@ struct AddClothingView: View {
         )
         
         clothingStore.addClothingItem(newItem)
-        dismiss()
+        
+        // Track the addition
+        if usageTracker.trackClothingAddition() {
+            dismiss()
+        } else {
+            // This shouldn't happen if canSaveItem is working correctly
+            showPaywall = true
+        }
     }
 }
 

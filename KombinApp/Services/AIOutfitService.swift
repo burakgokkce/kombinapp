@@ -43,7 +43,7 @@ class AIOutfitService: ObservableObject {
     }
     
     // Generate outfit suggestion based on available items and desired style
-    func generateOutfitSuggestion(from items: [ClothingItem], preferredStyle: OutfitStyle? = nil, customDescription: String? = nil) -> OutfitSuggestion? {
+    func generateOutfitSuggestion(from items: [ClothingItem], preferredStyle: OutfitStyle? = nil, customDescription: String? = nil, isPremium: Bool = false) -> OutfitSuggestion? {
         
         // Filter items by style preference if provided
         var filteredItems = items
@@ -56,7 +56,7 @@ class AIOutfitService: ObservableObject {
         
         // If custom description is provided, simulate AI understanding
         if let customDescription = customDescription, !customDescription.isEmpty {
-            filteredItems = filterItemsByDescription(items, description: customDescription)
+            filteredItems = filterItemsByDescription(items, description: customDescription, isPremium: isPremium)
         }
         
         // Try to create a complete outfit
@@ -109,29 +109,97 @@ class AIOutfitService: ObservableObject {
         }
     }
     
-    private func filterItemsByDescription(_ items: [ClothingItem], description: String) -> [ClothingItem] {
+    private func filterItemsByDescription(_ items: [ClothingItem], description: String, isPremium: Bool = false) -> [ClothingItem] {
         let lowercased = description.lowercased()
         
-        // Simple keyword matching - in a real app, this would use NLP
+        // Enhanced AI understanding for premium users
         var filtered = items
         
-        if lowercased.contains("formal") || lowercased.contains("elegant") || lowercased.contains("business") {
+        if isPremium {
+            // Premium users get more sophisticated filtering
+            filtered = performAdvancedFiltering(items: items, description: lowercased)
+        } else {
+            // Basic filtering for free users
+            filtered = performBasicFiltering(items: items, description: lowercased)
+        }
+        
+        return filtered.isEmpty ? items : filtered
+    }
+    
+    private func performAdvancedFiltering(items: [ClothingItem], description: String) -> [ClothingItem] {
+        var filtered = items
+        
+        // Advanced style detection
+        if description.contains("formal") || description.contains("elegant") || description.contains("business") || 
+           description.contains("ofis") || description.contains("iş") || description.contains("resmi") {
             filtered = items.filter { $0.aiDetectedStyle == .formal || $0.aiDetectedStyle == nil }
-        } else if lowercased.contains("casual") || lowercased.contains("relaxed") || lowercased.contains("comfortable") {
+        } else if description.contains("casual") || description.contains("relaxed") || description.contains("comfortable") ||
+                  description.contains("rahat") || description.contains("günlük") || description.contains("sade") {
             filtered = items.filter { $0.aiDetectedStyle == .casual || $0.aiDetectedStyle == nil }
-        } else if lowercased.contains("sport") || lowercased.contains("gym") || lowercased.contains("active") {
+        } else if description.contains("sport") || description.contains("gym") || description.contains("active") ||
+                  description.contains("spor") || description.contains("aktif") || description.contains("koşu") {
+            filtered = items.filter { $0.aiDetectedStyle == .sporty || $0.aiDetectedStyle == nil }
+        } else if description.contains("party") || description.contains("night") || description.contains("club") ||
+                  description.contains("parti") || description.contains("gece") || description.contains("eğlence") {
+            filtered = items.filter { $0.aiDetectedStyle == .formal || $0.type == .dress }
+        }
+        
+        // Advanced color filtering with Turkish support
+        let colorKeywords: [String: ClothingColor] = [
+            "black": .black, "siyah": .black,
+            "white": .white, "beyaz": .white,
+            "red": .red, "kırmızı": .red,
+            "blue": .blue, "mavi": .blue,
+            "green": .green, "yeşil": .green,
+            "yellow": .yellow, "sarı": .yellow,
+            "pink": .pink, "pembe": .pink,
+            "purple": .purple, "mor": .purple,
+            "brown": .brown, "kahverengi": .brown,
+            "gray": .gray, "gri": .gray
+        ]
+        
+        for (keyword, color) in colorKeywords {
+            if description.contains(keyword) {
+                filtered = filtered.filter { $0.aiDetectedColor == color || $0.selectedColor == color || $0.aiDetectedColor == nil }
+                break
+            }
+        }
+        
+        // Weather-based filtering (premium feature)
+        if description.contains("hot") || description.contains("summer") || description.contains("sıcak") || description.contains("yaz") {
+            filtered = filtered.filter { $0.type != .jacket && $0.type != .coat }
+        } else if description.contains("cold") || description.contains("winter") || description.contains("soğuk") || description.contains("kış") {
+            // Prefer warmer items
+            let warmItems = filtered.filter { $0.type == .jacket || $0.type == .coat }
+            if !warmItems.isEmpty {
+                filtered = warmItems + filtered.filter { $0.type != .jacket && $0.type != .coat }
+            }
+        }
+        
+        return filtered
+    }
+    
+    private func performBasicFiltering(items: [ClothingItem], description: String) -> [ClothingItem] {
+        var filtered = items
+        
+        // Basic style filtering
+        if description.contains("formal") || description.contains("elegant") || description.contains("business") {
+            filtered = items.filter { $0.aiDetectedStyle == .formal || $0.aiDetectedStyle == nil }
+        } else if description.contains("casual") || description.contains("relaxed") || description.contains("comfortable") {
+            filtered = items.filter { $0.aiDetectedStyle == .casual || $0.aiDetectedStyle == nil }
+        } else if description.contains("sport") || description.contains("gym") || description.contains("active") {
             filtered = items.filter { $0.aiDetectedStyle == .sporty || $0.aiDetectedStyle == nil }
         }
         
-        // Color filtering
+        // Basic color filtering (English only for free users)
         for color in ClothingColor.allCases {
-            if lowercased.contains(color.rawValue.lowercased()) {
+            if description.contains(color.rawValue.lowercased()) {
                 filtered = filtered.filter { $0.aiDetectedColor == color || $0.aiDetectedColor == nil }
                 break
             }
         }
         
-        return filtered.isEmpty ? items : filtered
+        return filtered
     }
     
     private func generateStyleDescription(for items: [ClothingItem], preferredStyle: OutfitStyle?) -> String {

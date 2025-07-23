@@ -11,8 +11,10 @@ import PhotosUI
 struct MyClosetView: View {
     @EnvironmentObject var clothingStore: ClothingStore
     @EnvironmentObject var appSettings: AppSettings
+    @StateObject private var subscriptionManager = SubscriptionManager()
     @State private var showAddClothing = false
     @State private var selectedCategory: ClothingType? = nil
+    @State private var showPremium = false
     
     private var isEnglish: Bool {
         appSettings.language == .english
@@ -48,6 +50,32 @@ struct MyClosetView: View {
                             }
                             
                             Spacer()
+                            
+                            // Premium Button
+                            if !subscriptionManager.isPremium {
+                                Button(action: {
+                                    showPremium = true
+                                }) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "crown.fill")
+                                            .font(.caption)
+                                        Text("ClosAI Premium")
+                                            .font(.caption)
+                                            .fontWeight(.semibold)
+                                    }
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(
+                                        LinearGradient(
+                                            colors: [Color.pink, Color.purple],
+                                            startPoint: .leading,
+                                            endPoint: .trailing
+                                        )
+                                    )
+                                    .foregroundColor(.white)
+                                    .cornerRadius(15)
+                                }
+                            }
                             
                             Button(action: {
                                 showAddClothing = true
@@ -109,6 +137,9 @@ struct MyClosetView: View {
             AddClothingView()
                 .environmentObject(clothingStore)
                 .environmentObject(appSettings)
+        }
+        .sheet(isPresented: $showPremium) {
+            ClosAIPremiumView()
         }
     }
     

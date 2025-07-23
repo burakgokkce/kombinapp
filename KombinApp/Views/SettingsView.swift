@@ -9,6 +9,15 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject var appSettings: AppSettings
+    @StateObject private var subscriptionManager = SubscriptionManager()
+    @StateObject private var usageTracker: UsageTracker
+    @State private var showPaywall = false
+    @State private var showSubscriptionManagement = false
+    
+    init() {
+        let subscriptionManager = SubscriptionManager()
+        self._usageTracker = StateObject(wrappedValue: UsageTracker(subscriptionManager: subscriptionManager))
+    }
     
     private var isEnglish: Bool {
         appSettings.language == .english
@@ -45,6 +54,19 @@ struct SettingsView: View {
                         
                         // Settings sections
                         VStack(spacing: 25) {
+                            // Premium Subscription Section
+                            SettingsSection(
+                                title: isEnglish ? "Premium Subscription" : "Premium Abonelik",
+                                icon: "crown.fill"
+                            ) {
+                                SubscriptionStatusView(
+                                    subscriptionManager: subscriptionManager,
+                                    usageTracker: usageTracker,
+                                    isEnglish: isEnglish,
+                                    showPaywall: $showPaywall,
+                                    showSubscriptionManagement: $showSubscriptionManagement
+                                )
+                            }
                             // Theme Settings
                             SettingsSection(title: isEnglish ? "Appearance" : "Görünüm", icon: "paintbrush.fill") {
                                 VStack(spacing: 15) {
@@ -142,6 +164,12 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.large)
+        }
+        .sheet(isPresented: $showPaywall) {
+            ClosAIPremiumView()
+        }
+        .sheet(isPresented: $showSubscriptionManagement) {
+            SubscriptionManagementView()
         }
     }
 }
@@ -288,4 +316,282 @@ struct LanguageOptionView: View {
 #Preview {
     SettingsView()
         .environmentObject(AppSettings())
+}
+// MARK: - Subscription Status View
+struct SubscriptionStatusView: View {
+    @ObservedObject var subscriptionManager: SubscriptionManager
+    @ObservedObject var usageTracker: UsageTracker
+    let isEnglish: Bool
+    @Binding var showPaywall: Bool
+    @Binding var showSubscriptionManagement: Bool
+    
+    var body: some View {
+        VStack(spacing: 15) {
+            if subscriptionManager.subscriptionStatus.isPremium {
+                // Premium Status
+                premiumStatusView
+            } else {
+                // Free Status
+                freeStatusView
+            }
+        }
+    }
+    
+    private var premiumStatusView: some View {
+        VStack(spacing: 15) {
+            // Premium Badge
+            HStack {
+                Image(systemName: "crown.fill")
+                    .foregroundColor(.yellow)
+                Text("PREMIUM ACTIVE")
+                    .font(.headline)
+                    .fontWeight(.bold)
+                    .foregroundColor(.primary)
+                Spacer()
+            }
+            .padding()
+            .background(
+                LinearGradient(
+                    colors: [Color.yellow.opacity(0.2), Color.orange.opacity(0.1)],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .cornerRadius(12)
+            
+            // Subscription Details
+            if case .premium(let expiryDate, let type) = subscriptionManager.subscriptionStatus {
+                VStack(spacing: 10) {
+                    HStack {
+                        Text(isEnglish ? "Plan" : "Plan")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text(type.displayName)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.primary)
+                    }
+                    
+                    HStack {
+                        Text(isEnglish ? "Renewal Date" : "Yenileme Tarihi")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text(DateFormatter.shortDate.string(from: expiryDate))
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.primary)
+                    }
+                }
+            }
+            
+            // Manage Subscription Button
+            Button(isEnglish ? "Manage Subscription" : "Aboneliği Yönet") {
+                showSubscriptionManagement = true
+            }
+            .font(.subheadline)
+            .fontWeight(.semibold)
+            .foregroundColor(Color(hex: "d291bc"))
+            .frame(maxWidth: .infinity)
+            .frame(height: 44)
+            .background(Color(hex: "d291bc").opacity(0.1))
+            .cornerRadius(12)
+        }
+    }
+    
+    private var freeStatusView: some View {
+        VStack(spacing: 15) {
+            // Usage Statistics
+            VStack(spacing: 12) {
+                HStack {
+                    Text(isEnglish ? "Current Usage" : "Mevcut Kullanım")
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.primary)
+                    Spacer()
+                }
+                
+                let stats = usageTracker.getUsageStatistics()
+                
+                VStack(spacing: 8) {
+                    HStack {
+                        Image(systemName: "tshirt.fill")
+                            .foregroundColor(.blue)
+                        Text(isEnglish ? "Clothing Items" : "Kıyafet Parçası")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text(stats.clothingUsageText)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.primary)
+                    }
+                    
+                    HStack {
+                        Image(systemName: "sparkles")
+                            .foregroundColor(.purple)
+                        Text(isEnglish ? "Daily Outfits" : "Günlük Kombin")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text(stats.outfitUsageText)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.primary)
+                    }
+                }
+            }
+            .padding()
+            .background(Color(.systemGray6))
+            .cornerRadius(12)
+            
+            // Premium Features List
+            VStack(spacing: 8) {
+                HStack {
+                    Text(isEnglish ? "Premium Features" : "Premium Özellikler")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
+                
+                ForEach(Array(PremiumFeature.allCases.prefix(3)), id: \.self) { feature in
+                    HStack {
+                        Image(systemName: feature.iconName)
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                        Text(feature.displayName)
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                        Spacer()
+                        Image(systemName: "lock.fill")
+                            .font(.caption2)
+                            .foregroundColor(.gray)
+                    }
+                }
+            }
+            
+            // Upgrade Button
+            Button(isEnglish ? "Upgrade to Premium" : "Premium'a Geç") {
+                showPaywall = true
+            }
+            .font(.headline)
+            .fontWeight(.semibold)
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity)
+            .frame(height: 50)
+            .background(
+                LinearGradient(
+                    colors: [Color.pink, Color.purple],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .cornerRadius(25)
+            .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+        }
+    }
+}
+
+// MARK: - Subscription Management View
+struct SubscriptionManagementView: View {
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var subscriptionManager = SubscriptionManager()
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 30) {
+                // Header
+                VStack(spacing: 15) {
+                    Image(systemName: "crown.fill")
+                        .font(.system(size: 50))
+                        .foregroundColor(.yellow)
+                    
+                    Text("Abonelik Yönetimi")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundColor(.primary)
+                }
+                .padding(.top, 30)
+                
+                // Current Subscription Info
+                if case .premium(let expiryDate, let type) = subscriptionManager.subscriptionStatus {
+                    VStack(spacing: 20) {
+                        VStack(spacing: 10) {
+                            Text("Aktif Plan: \(type.displayName)")
+                                .font(.headline)
+                                .fontWeight(.semibold)
+                            
+                            Text("Yenileme Tarihi: \(DateFormatter.longDate.string(from: expiryDate))")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding()
+                        .background(Color(.systemGray6))
+                        .cornerRadius(15)
+                        
+                        // Management Options
+                        VStack(spacing: 15) {
+                            Button("App Store'da Aboneliği Yönet") {
+                                if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
+                                    UIApplication.shared.open(url)
+                                }
+                            }
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(Color.blue)
+                            .cornerRadius(25)
+                            
+                            Button("Satın Alımları Geri Yükle") {
+                                Task {
+                                    await subscriptionManager.restorePurchases()
+                                }
+                            }
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .disabled(subscriptionManager.isLoading)
+                        }
+                    }
+                }
+                
+                Spacer()
+                
+                // Info Text
+                Text("Aboneliğinizi iptal etmek veya değiştirmek için App Store ayarlarını kullanın. Abonelik mevcut dönem sonuna kadar aktif kalacaktır.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 30)
+            }
+            .padding(.horizontal, 20)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Kapat") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - DateFormatter Extensions
+extension DateFormatter {
+    static let shortDate: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        return formatter
+    }()
+    
+    static let longDate: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .long
+        return formatter
+    }()
 }
